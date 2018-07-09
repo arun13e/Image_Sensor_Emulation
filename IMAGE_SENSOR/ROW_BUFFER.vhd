@@ -14,9 +14,9 @@ use IEEE.std_logic_unsigned.all;
 
 entity ROW_BUFFER is
     port (
-        clk, wr_buf, load : in std_logic;                                       --bit_md: update shift register with new data
+        clk, wr_buf, load : in std_logic;                                       
         rd_ram, ready, nxt_px : out std_logic;                                  --ready indicator for Sequencer
-        bit_md : in std_logic_vector(1 downto 0);
+        bit_md : in std_logic_vector(1 downto 0);                               --bit_md: 8/10/12 bit per pixel
         data : in std_logic_vector(11 downto 0);
         shift : in std_logic_vector(127 downto 0);                              --shift control lines
         rm_addr : out std_logic_vector(12 downto 0);                            --address for ram

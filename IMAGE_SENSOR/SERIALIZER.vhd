@@ -19,6 +19,7 @@ entity SERIALIZER is
         mode_sr : in std_logic_vector(6 downto 0);                              --mode for operation 64,32,16,8,4,2,1 and dual or one sided
         lvds_out : out std_logic_vector(63 downto 0);
         shift : out std_logic_vector(127 downto 0);
+        dval : out std_logic; 
         pxdata : in std_logic_vector(127 downto 0)
     );
 end SERIALIZER;
@@ -42,7 +43,7 @@ begin
         variable px_count : integer range 0 to 127 := 0;
     begin
 
-        if rst = '1' then
+        if rst = '0' then
             px_count := 0;
 
         elsif rising_edge(clk) then
@@ -90,6 +91,7 @@ begin
         if rst = '1' then
             strt_flag := '0';
             init_flag := '1';
+            dval      <= '0';
         elsif falling_edge(clk) then
 
             if start = '1' then
@@ -102,17 +104,20 @@ begin
                     init_flag := '0';
                     mask := filter(to_integer(unsigned(mode_sr(3 downto 1))));  --fetching appropriate mask from rom
                     sh_out <= mask;
+                    dval <= '1';
                 end if;
 
                 if px_burst = '1' then
-
+    
                     if mask(0) = '0' then
                         mask := std_logic_vector(unsigned(mask) srl 1);         --shift until last channel=1
                         sh_out <= mask;
+                        dval <= '1';
                     else
                         sh_out <= x"0000000000000000";
                         strt_flag := '0';
                         init_flag := '1';
+                        dval <= '0';
                     end if;
 
                 end if;
