@@ -8,135 +8,134 @@
 --
 ----------------------------------------------------------------------------
 
-library IEEE;
-use IEEE.STD_LOGIC_1164.all;
-use ieee.numeric_std.all;
-use IEEE.NUMERIC_STD.all;
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+USE ieee.numeric_std.ALL;
+USE IEEE.NUMERIC_STD.ALL;
 
-entity SERIALIZER is
-    port (
-        clk, rst, start, nxt_px : in std_logic;
-        mode_sr : in std_logic_vector(6 downto 0);                              --mode for operation 64,32,16,8,4,2,1 and dual or one sided
-        lvds_out : out std_logic_vector(63 downto 0);
-        shift : out std_logic_vector(127 downto 0);
-        dval : out std_logic; 
-        pxdata : in std_logic_vector(127 downto 0)
+ENTITY SERIALIZER IS
+    PORT (
+        clk, rst, start, nxt_px : IN std_logic;
+        mode_sr : IN std_logic_vector(6 DOWNTO 0); --mode for operation 64,32,16,8,4,2,1 and dual or one sided
+        lvds_out : OUT std_logic_vector(63 DOWNTO 0);
+        shift : OUT std_logic_vector(127 DOWNTO 0);
+        dval, lval : OUT std_logic;
+        pxdata : IN std_logic_vector(127 DOWNTO 0)
     );
-end SERIALIZER;
+END SERIALIZER;
 
-architecture Behavioral of SERIALIZER is
-    signal px_out, sh_out : std_logic_vector(63 downto 0);
-    signal px_burst : std_logic;
-    type memory is array (0 to 15) of std_logic_vector(63 downto 0);            --mask to select channel for lvds output
-    constant filter : memory := (
+ARCHITECTURE Behavioral OF SERIALIZER IS
+    SIGNAL px_out, sh_out : std_logic_vector(63 DOWNTO 0);
+    SIGNAL px_burst : std_logic;
+    TYPE memory IS ARRAY (0 TO 15) OF std_logic_vector(63 DOWNTO 0); --mask to select channel for lvds output
+    CONSTANT filter : memory := (
     0 => x"FFFFFFFFFFFFFFFF",
-    1 => x"5555555555555555",
+    1 => "0101010101010101010101010101010101010101010101010101010101010101",
     2 => x"1111111111111111",
     3 => x"0101010101010101",
     4 => x"0001000100010001",
     5 => x"0000000100000001",
     6 => x"0000000000000001",
-    others => x"FFFFFFFFFFFFFFFF");
-begin
+    OTHERS => x"FFFFFFFFFFFFFFFF");
+BEGIN
 
-    px_mux : process (clk, pxdata, rst, nxt_px, mode_sr) is
-        variable px_count : integer range 0 to 127 := 0;
-    begin
+    px_mux : PROCESS (clk, pxdata, rst, nxt_px, mode_sr) IS
+        VARIABLE px_count : INTEGER RANGE 0 TO 127 := 0;
+    BEGIN
 
-        if rst = '0' then
+        IF rst = '0' THEN
             px_count := 0;
 
-        elsif rising_edge(clk) then
+        ELSIF falling_edge(clk) THEN
 
-            if nxt_px = '1' then
-                px_count := px_count + 1;                                       --increment on every completed pixel
-            end if;
+            IF nxt_px = '1' THEN
+                px_count := px_count + 1; --increment on every completed pixel
+            END IF;
 
-            case mode_sr(6 downto 4) is
-                when "000" =>
+            CASE mode_sr(6 DOWNTO 4) IS
+                WHEN "000" =>
 
-                    for I in 0 to 63 loop
+                    FOR I IN 0 TO 63 LOOP
 
-                        if px_count < 63 then
+                        IF px_count < 64 THEN
                             px_out(I) <= pxdata(I * 2);
                             shift(I * 2) <= sh_out(I);
-                        else
+                        ELSE
                             px_out(I) <= pxdata((I * 2) + 1);
                             shift((I * 2) + 1) <= sh_out(I);
-                        end if;
+                        END IF;
 
-                    end loop;
+                    END LOOP;
 
-                when others =>
-            end case;
+                WHEN OTHERS =>
+            END CASE;
 
-            if px_count = 127 then
-                px_burst <= '1';                                                --end of one complete burst of 128 pixels
+            IF px_count = 127 THEN
+                px_burst <= '1'; --end of one complete burst of 128 pixels
                 px_count := 0;
-            else
+            ELSE
                 px_burst <= '0';
-            end if;
+            END IF;
 
-        end if;
-    end process;
+        END IF;
+    END PROCESS;
+    burst_gen : PROCESS (clk, px_out, rst, px_burst, start) IS
+        VARIABLE last_shift : std_logic := '0';
+        VARIABLE strt_flag : std_logic := '0';
+        VARIABLE init_flag : std_logic := '1';
+        VARIABLE mask : std_logic_vector(63 DOWNTO 0);
+        VARIABLE temp : INTEGER RANGE 0 TO 63 := 0;
+    BEGIN
 
-
-    burst_gen : process (clk, px_out, rst, px_burst, start) is
-        variable strt_flag : std_logic := '0';
-        variable init_flag : std_logic := '1';
-        variable mask : std_logic_vector(63 downto 0);
-        variable temp : integer range 0 to 63 := 0;
-    begin
-
-        if rst = '1' then
+        IF rst = '0' THEN
             strt_flag := '0';
             init_flag := '1';
-            dval      <= '0';
-        elsif falling_edge(clk) then
+            dval <= '0';
+        ELSIF rising_edge(clk) THEN
 
-            if start = '1' then
+            IF start = '1' THEN
                 strt_flag := '1';
-            end if;
+            END IF;
 
-            if strt_flag = '1' then
+            IF strt_flag = '1' THEN
 
-                if init_flag = '1' then
+                IF init_flag = '1' THEN
                     init_flag := '0';
-                    mask := filter(to_integer(unsigned(mode_sr(3 downto 1))));  --fetching appropriate mask from rom
-                    sh_out <= mask;
+                    mask := filter(to_integer(unsigned(mode_sr(3 DOWNTO 1)))); --fetching appropriate mask from rom
+                    sh_out <= filter(to_integer(unsigned(mode_sr(3 DOWNTO 1))));
                     dval <= '1';
-                end if;
+                END IF;
 
-                if px_burst = '1' then
-    
-                    if mask(0) = '0' then
-                        mask := std_logic_vector(unsigned(mask) srl 1);         --shift until last channel=1
-                        sh_out <= mask;
-                        dval <= '1';
-                    else
+                IF px_burst = '1' THEN
+
+                    IF mask(63) = '1' THEN
                         sh_out <= x"0000000000000000";
                         strt_flag := '0';
                         init_flag := '1';
                         dval <= '0';
-                    end if;
+                    ELSE --Insert overhead time and set dval = 0
+                        mask := std_logic_vector(unsigned(mask) SLL 1); --shift until last channel=1
+                        sh_out <= mask;
+                        dval <= '1';
+                    END IF;
+                END IF;
 
-                end if;
+                FOR I IN 0 TO 63 LOOP
 
-                for I in 0 to 63 loop
-
-                    if to_integer(unsigned(mode_sr(3 downto 1))) = 0 then
+                    IF to_integer(unsigned(mode_sr(3 DOWNTO 1))) = 0 THEN
                         lvds_out(I) <= px_out(I);
-                    else
+                    ELSE
 
-                        if sh_out(I) = '1' then                                 --only those channels with valid data are muxed
-                            temp := (I/to_integer(unsigned(mode_sr(3 downto 1)))) * to_integer(unsigned(mode_sr(3 downto 1)));
+                        IF sh_out(I) = '1' THEN --only those channels with valid data are muxed
+                            temp := (I/to_integer(unsigned(mode_sr(3 DOWNTO 1)))) * to_integer(unsigned(mode_sr(3 DOWNTO 1)));
                             lvds_out(temp) <= px_out(I);
-                        end if;
+                        END IF;
 
-                    end if;
-                end loop;
+                    END IF;
+                END LOOP;
 
-            end if;
-        end if;
-    end process;
-end Behavioral;
+            END IF;
+            lval <= strt_flag;
+        END IF;
+    END PROCESS;
+END Behavioral;

@@ -7,145 +7,129 @@
 --  2 of the License, or (at your option) any later version.
 --
 ----------------------------------------------------------------------------
-library IEEE;
-use IEEE.STD_LOGIC_1164.all;
-use ieee.numeric_std.all;
-use IEEE.std_logic_unsigned.all;
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+USE ieee.numeric_std.ALL;
+USE IEEE.std_logic_unsigned.ALL;
 
-entity ROW_BUFFER is
-    port (
-        clk, wr_buf, load : in std_logic;                                       
-        rd_ram, ready, nxt_px : out std_logic;                                  --ready indicator for Sequencer
-        bit_md : in std_logic_vector(1 downto 0);                               --bit_md: 8/10/12 bit per pixel
-        data : in std_logic_vector(11 downto 0);
-        shift : in std_logic_vector(127 downto 0);                              --shift control lines
-        rm_addr : out std_logic_vector(12 downto 0);                            --address for ram
-        pxdata : out std_logic_vector(127 downto 0));                           --pixel data for serializer
-end ROW_BUFFER;
+ENTITY ROW_BUFFER IS
+    PORT (
+        clk, wr_buf, load : IN std_logic;
+        rd_ram, ready, nxt_px, load_run : OUT std_logic; --ready indicator for Sequencer
+        bit_md : IN std_logic_vector(1 DOWNTO 0); --bit_md: 8/10/12 bit per pixel
+        data : IN std_logic_vector(11 DOWNTO 0);
+        shift : IN std_logic_vector(127 DOWNTO 0); --shift control lines
+        rm_addr : OUT std_logic_vector(12 DOWNTO 0); --address for ram
+        pxdata : OUT std_logic_vector(127 DOWNTO 0)); --pixel data for serializer
+END ROW_BUFFER;
 
-architecture Behavioral of ROW_BUFFER is
-    subtype row is std_logic_vector(11 downto 0);
-    type mem is array (integer range 0 to 127, integer range 0 to 63) of row;
-    signal row_var : mem;
-    type sh_reg is array (integer range 0 to 127) of std_logic_vector(11 downto 0);
-begin
+ARCHITECTURE Behavioral OF ROW_BUFFER IS
+    SUBTYPE row IS std_logic_vector(11 DOWNTO 0);
+    TYPE mem IS ARRAY (INTEGER RANGE 0 TO 127, INTEGER RANGE 0 TO 63) OF row;
+    SIGNAL row_var : mem;
+    TYPE sh_reg IS ARRAY (INTEGER RANGE 0 TO 127) OF std_logic_vector(11 DOWNTO 0);
 
-    main_proc : process (clk, data, wr_buf, load, bit_md, shift) is
-        variable shift_flag : std_logic := '0';
-        variable shift_count : integer range 0 to 11 := 0;
-        variable shift_reg : sh_reg;
-        variable ld_flag, wr_flag, last_wr_flag : std_logic := '0';
-        variable bit_ch : integer range 0 to 63 := 0;
-        variable addr : std_logic_vector(12 downto 0) := (others => '0');
-    begin
+    --	SIGNAL ram_wr, ram_clk : std_logic;
+    --	SIGNAL ram_addr: std_logic_vector(12 downto 0) ;
+    --	SIGNAL ram_din : std_logic_vector(11 downto 0) ;
+    --	SIGNAL ram_dout: std_logic_vector(11 downto 0) ;
 
-        if rising_edge(clk) then
+BEGIN
+    --    cmv_sensor : entity work.block_ram_wrapper
+    --	PORT MAP(
+    --	    clka  => ram_clk,
+    --        wea   => ram_wr,
+    --        addra => ram_addr,
+    --        dina  => ram_din,
+    --        douta => ram_dout );
 
-            if load = '1' then                                                  --sets ld_flag, also serves as reset
+    main_proc : PROCESS (clk, data, wr_buf, load, bit_md, shift) IS
+        VARIABLE shift_flag : std_logic := '0';
+        VARIABLE shift_count : INTEGER RANGE 0 TO 11 := 0;
+        VARIABLE shift_reg : sh_reg;
+        VARIABLE ld_flag, wr_flag, last_wr_flag : std_logic := '0';
+        VARIABLE bit_ch : INTEGER RANGE 0 TO 64 := 0;
+        VARIABLE addr : std_logic_vector(12 DOWNTO 0) := (OTHERS => '0');
+    BEGIN
+        IF rising_edge(clk) THEN
+            load_run <= ld_flag;
+
+            IF load = '1' THEN --sets ld_flag, also serves as reset
                 ready <= '0';
                 ld_flag := '1';
-                addr := (others => '0');
+                addr := (OTHERS => '0');
                 nxt_px <= '0';
                 bit_ch := 0;
                 shift_count := 0;
                 last_wr_flag := '0';
-            end if;
+            END IF;
 
-            if ld_flag = '1' then                                               --stays in this control until buffer filled
+            IF ld_flag = '1' THEN --stays in this control until buffer filled
 
-                if wr_flag = '1' then                                           --buffer write cycle
+                IF wr_flag = '1' THEN --buffer write cycle
                     rd_ram <= '0';
-                    if wr_buf = '1' then
 
-                        row_var((to_integer(unsigned(addr(12 downto 6)))), (to_integer(unsigned(addr(5 downto 0))))) <= data;
+                    IF wr_buf = '1' THEN
+
+                        row_var((to_integer(unsigned(addr(12 DOWNTO 6)))), (to_integer(unsigned(addr(5 DOWNTO 0))))) <= data;
                         wr_flag := '0';
-                        addr := addr + '1';                                     --next ram address to access
-                    end if;
+                        addr := addr + '1'; --next ram address to access
+                    END IF;
 
-                elsif last_wr_flag = '1' then
+                ELSIF last_wr_flag = '1' THEN
 
-                    for I in 0 to 127 loop                                      --updating shift register after last write
+                    FOR I IN 0 TO 127 LOOP --updating shift register after last write
                         shift_reg(I) := row_var(I, bit_ch);
-                    end loop;
+                    END LOOP;
 
                     ready <= '1';
                     ld_flag := '0';
-                else
+                ELSE
                     rd_ram <= '1';
                     rm_addr <= addr;
                     wr_flag := '1';
 
-                    if addr = x"1FFF" then
+                    IF addr = x"1FFF" THEN
                         last_wr_flag := '1';
-                    end if;
-                end if;
-            else
+                    END IF;
+                END IF;
+            ELSE
+                ready <= '0';--
+                FOR I IN 0 TO 127 LOOP
 
-                for I in 0 to 127 loop
+                    IF shift(I) = '1' THEN
+                        shift_reg(I) := x"555";
+                        --shift_reg(I) := std_logic_vector(unsigned(shift_reg(I)) SRL 1);
+                        shift_flag := shift_flag OR shift(I); --1 if even a single shift operation occurs
+                    END IF;
 
-                    if shift(I) = '1' then
-                        shift_reg(I) := std_logic_vector(unsigned(shift_reg(I)) srl 1);
-                        shift_flag := shift_flag or shift(I);                   --1 if even a single shift operation occurs
-                    end if;
+                    pxdata(I) <= shift_reg(I)(0); --assigning least significant bit to output
+                END LOOP;
 
-                    pxdata(I) <= shift_reg(I)(0);                               --assigning least significant bit to output
-                end loop;
-
-                if shift_flag = '1' then
-                    shift_count := shift_count + 1;                             --increment counter if flag 1
+                IF shift_flag = '1' THEN
+                    shift_count := shift_count + 1; --increment counter if flag 1
                     shift_flag := '0';
-                end if;
+                END IF;
 
-                case bit_md is
-                    when "00" =>                                                --for 12 bit per pixel
+                IF shift_count = 12 - (2 * to_integer(unsigned(bit_md))) THEN
+                    nxt_px <= '1';
+                    bit_ch := bit_ch + 1;
+                    shift_count := 0;
 
-                        if shift_count = 12 then
-                            nxt_px <= '1';
-                            bit_ch := bit_ch + 1;
-                            shift_count := 0;
+                    IF bit_ch = 64 THEN
+                        bit_ch := 0;
+                    END IF;
 
-                            for I in 0 to 127 loop
-                                shift_reg(I) := row_var(I, bit_ch);
-                            end loop;
+                    FOR I IN 0 TO 127 LOOP
+                        shift_reg(I) := x"555";
+                        --shift_reg(I) := row_var(I, bit_ch);
+                    END LOOP;
 
-                        else
-                            nxt_px <= '0';
-                        end if;
+                ELSE
+                    nxt_px <= '0';
+                END IF;
 
-                    when "01" =>                                                --for 10 bit per pixel
-
-                        if shift_count = 10 then
-                            nxt_px <= '1';
-                            bit_ch := bit_ch + 1;
-                            shift_count := 0;
-
-                            for I in 0 to 127 loop
-                                shift_reg(I) := row_var(I, bit_ch);
-                            end loop;
-
-                        else
-                            nxt_px <= '0';
-                        end if;
-
-                    when "10" =>                                                --for 8 bit per pixel
-
-                        if shift_count = 8 then
-                            nxt_px <= '1';
-                            bit_ch := bit_ch + 1;
-                            shift_count := 0;
-
-                            for I in 0 to 127 loop
-                                shift_reg(I) := row_var(I, bit_ch);
-                            end loop;
-
-                        else
-                            nxt_px <= '0';
-                        end if;
-
-                    when others =>
-                end case;
-
-            end if;
-        end if;
-    end process;
-end Behavioral;
+            END IF;
+        END IF;
+    END PROCESS;
+END Behavioral;
